@@ -83,21 +83,33 @@ def _market_block(m: dict, n: int) -> str:
     return f"**{n} · {q}**\nMarket: {odds}  ·  💰 {vol}  ·  📅 {_date(m.get('endDate'))}"
 
 
+def _vol(m: dict) -> float:
+    try:
+        return float(m.get("volume") or m.get("volumeNum") or 0)
+    except Exception:
+        return 0.0
+
+
+def _is_live(m: dict) -> bool:
+    """Keep genuinely uncertain markets; drop dead longshots / near-settled (no forecast value)."""
+    if m.get("closed") or m.get("archived"):
+        return False
+    _, pct = _odds(m)
+    return pct is not None and 3 <= pct <= 97
+
+
 def _collect_markets(events: list, limit: int) -> list:
-    rows = []
+    """One representative (highest-volume, live) market per event, so a single
+    multi-outcome mega-event (World Cup, election) can't flood the list with longshots."""
+    picks = []
     for ev in events:
-        for m in ev.get("markets", []) or []:
-            if m.get("closed") or m.get("archived"):
-                continue
-            rows.append(m)
-    # sort by volume desc, keep top `limit`
-    def vol(m):
-        try:
-            return float(m.get("volume") or m.get("volumeNum") or 0)
-        except Exception:
-            return 0
-    rows.sort(key=vol, reverse=True)
-    return rows[:limit]
+        cands = [m for m in (ev.get("markets", []) or []) if _is_live(m)]
+        if not cands:
+            continue
+        cands.sort(key=_vol, reverse=True)
+        picks.append(cands[0])
+    picks.sort(key=_vol, reverse=True)
+    return picks[:limit]
 
 
 def cmd_events(tag: str | None, limit: int) -> None:
