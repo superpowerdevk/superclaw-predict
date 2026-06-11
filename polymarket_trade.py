@@ -33,7 +33,12 @@ from pathlib import Path
 
 HOST = os.environ.get("POLYMARKET_HOST", "https://clob.polymarket.com")
 CHAIN = int(os.environ.get("POLYMARKET_CHAIN", "137"))
-RPC = os.environ.get("POLYGON_RPC", "https://polygon-rpc.com")
+RPCS = ([os.environ["POLYGON_RPC"]] if os.environ.get("POLYGON_RPC") else []) + [
+    "https://polygon-bor-rpc.publicnode.com",
+    "https://polygon.llamarpc.com",
+    "https://1rpc.io/matic",
+    "https://polygon-rpc.com",
+]
 WALLET_PATH = Path(os.environ.get("SUPERCLAW_WALLET", str(Path.home() / ".superclaw-predict" / "wallet.json")))
 
 # Polygon contracts (verified from Polymarket docs)
@@ -68,7 +73,15 @@ def _wallet() -> dict:
 
 def _w3():
     from web3 import Web3
-    return Web3(Web3.HTTPProvider(RPC))
+    last=None
+    for url in RPCS:
+        try:
+            w3=Web3(Web3.HTTPProvider(url, request_kwargs={"timeout":15}))
+            if w3.is_connected():
+                return w3
+        except Exception as e:
+            last=e
+    raise RuntimeError(f"No working Polygon RPC. Last: {last}")
 
 
 def _client():
@@ -207,7 +220,7 @@ def cmd_redeem(condition_id, neg_risk, do_it):
         cid = condition_id if condition_id.startswith("0x") else "0x" + condition_id
         parent = "0x" + "00" * 32
         tx = ctf.functions.redeemPositions(w3.to_checksum_address(USDC), parent, cid, [1, 2]).build_transaction({
-            "from": addr, "nonce": w3.eth.get_transaction_count(addr),
+            "from": addr, "nonce": w3.eth.get_transaction_count(addr), "gas": 250000,
             "maxFeePerGas": w3.eth.gas_price * 2, "maxPriorityFeePerGas": w3.to_wei(30, "gwei"),
         })
         signed = acct.sign_transaction(tx)
@@ -229,7 +242,7 @@ def cmd_withdraw(to, usdc_amt, do_it):
         usdc = w3.eth.contract(address=w3.to_checksum_address(USDC), abi=ERC20_ABI)
         amt = int(round(float(usdc_amt) * 1e6))
         tx = usdc.functions.transfer(to, amt).build_transaction({
-            "from": addr, "nonce": w3.eth.get_transaction_count(addr),
+            "from": addr, "nonce": w3.eth.get_transaction_count(addr), "gas": 250000,
             "maxFeePerGas": w3.eth.gas_price * 2, "maxPriorityFeePerGas": w3.to_wei(30, "gwei"),
         })
         signed = acct.sign_transaction(tx)
