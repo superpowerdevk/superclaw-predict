@@ -14,7 +14,8 @@ a slippage price cap. Uses the verified py-clob-client-v2 API + web3 for on-chai
 Commands:
   wallet                                  create (if needed) + show your deposit address
   balance                                 USDC + POL balance
-  setup                                   one-time: approve USDC allowance (needs a little POL gas)
+  wrap   <usdc_amount>  [--yes]            convert USDC -> pUSD (the tradeable collateral)
+  setup                                   one-time: approve pUSD allowance (needs a little POL gas)
   price  <token_id>                       current buy/sell price
   buy    <token_id> <usdc>  [--max-price=] [--yes]
   sell   <token_id> <shares>[--min-price=] [--yes]
@@ -42,11 +43,17 @@ RPCS = ([os.environ["POLYGON_RPC"]] if os.environ.get("POLYGON_RPC") else []) + 
 WALLET_PATH = Path(os.environ.get("SUPERCLAW_WALLET", str(Path.home() / ".superclaw-predict" / "wallet.json")))
 
 # Polygon contracts (verified from Polymarket docs)
-USDC = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"   # USDC.e (Polymarket collateral)
+USDCE = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"  # bridged USDC.e
+USDC_NATIVE = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"  # native Polygon USDC
+PUSD = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB"   # Polymarket USD — the V2 collateral token
+ONRAMP = "0x93070a847efEf7F70739046A929D47a521F5B8ee"  # CollateralOnramp: wrap(asset,to,amount) USDC->pUSD
+ROUTER = "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45"  # Uniswap V3 SwapRouter02 (Polygon)
 CTF = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045"     # Conditional Tokens Framework
 DATA_API = "https://data-api.polymarket.com"
 
-ERC20_ABI = json.loads('[{"constant":true,"inputs":[{"name":"a","type":"address"}],"name":"balanceOf","outputs":[{"name":"","type":"uint256"}],"type":"function"},{"constant":false,"inputs":[{"name":"to","type":"address"},{"name":"v","type":"uint256"}],"name":"transfer","outputs":[{"name":"","type":"bool"}],"type":"function"},{"constant":true,"inputs":[],"name":"decimals","outputs":[{"name":"","type":"uint8"}],"type":"function"}]')
+ERC20_ABI = json.loads('[{"constant":true,"inputs":[{"name":"a","type":"address"}],"name":"balanceOf","outputs":[{"name":"","type":"uint256"}],"type":"function"},{"constant":false,"inputs":[{"name":"to","type":"address"},{"name":"v","type":"uint256"}],"name":"transfer","outputs":[{"name":"","type":"bool"}],"type":"function"},{"constant":false,"inputs":[{"name":"s","type":"address"},{"name":"v","type":"uint256"}],"name":"approve","outputs":[{"name":"","type":"bool"}],"type":"function"}]')
+ONRAMP_ABI = json.loads('[{"inputs":[{"name":"_asset","type":"address"},{"name":"_to","type":"address"},{"name":"_amount","type":"uint256"}],"name":"wrap","outputs":[],"stateMutability":"nonpayable","type":"function"}]')
+ROUTER_ABI = json.loads('[{"inputs":[{"components":[{"name":"tokenIn","type":"address"},{"name":"tokenOut","type":"address"},{"name":"fee","type":"uint24"},{"name":"recipient","type":"address"},{"name":"amountIn","type":"uint256"},{"name":"amountOutMinimum","type":"uint256"},{"name":"sqrtPriceLimitX96","type":"uint160"}],"name":"params","type":"tuple"}],"name":"exactInputSingle","outputs":[{"name":"amountOut","type":"uint256"}],"stateMutability":"payable","type":"function"}]')
 CTF_ABI = json.loads('[{"inputs":[{"name":"collateralToken","type":"address"},{"name":"parentCollectionId","type":"bytes32"},{"name":"conditionId","type":"bytes32"},{"name":"indexSets","type":"uint256[]"}],"name":"redeemPositions","outputs":[],"stateMutability":"nonpayable","type":"function"}]')
 
 
@@ -72,16 +79,18 @@ def _wallet() -> dict:
 
 
 def _w3():
+    """Connect to the first working public Polygon RPC (they get gated/rate-limited,
+    so we try several). Override with POLYGON_RPC env var."""
     from web3 import Web3
-    last=None
+    last = None
     for url in RPCS:
         try:
-            w3=Web3(Web3.HTTPProvider(url, request_kwargs={"timeout":15}))
+            w3 = Web3(Web3.HTTPProvider(url, request_kwargs={"timeout": 15}))
             if w3.is_connected():
                 return w3
-        except Exception as e:
-            last=e
-    raise RuntimeError(f"No working Polygon RPC. Last: {last}")
+        except Exception as e:  # noqa: BLE001
+            last = e
+    raise RuntimeError(f"No working Polygon RPC reachable. Last error: {last}")
 
 
 def _client():
@@ -113,22 +122,98 @@ def cmd_wallet():
     print("or `withdraw` to send funds back out. Keep the key private — it controls these funds.")
 
 
+def _erc20_bal(w3, token, addr):
+    return w3.eth.contract(address=w3.to_checksum_address(token), abi=ERC20_ABI).functions.balanceOf(addr).call() / 1e6
+
+
 def cmd_balance():
     w = _wallet()
     try:
         w3 = _w3()
         addr = w3.to_checksum_address(w["address"])
-        usdc = w3.eth.contract(address=w3.to_checksum_address(USDC), abi=ERC20_ABI)
-        bal = usdc.functions.balanceOf(addr).call() / 1e6
+        pusd = _erc20_bal(w3, PUSD, addr)
+        usdce = _erc20_bal(w3, USDCE, addr)
+        usdcn = _erc20_bal(w3, USDC_NATIVE, addr)
         pol = w3.eth.get_balance(addr) / 1e18
         _banner()
         print(f"Address: {w['address']}")
-        print(f"  USDC:  ${bal:,.2f}")
-        print(f"  POL :  {pol:.4f}  (gas){'  ⚠️ low — add a little POL for orders/allowance' if pol < 0.05 else ''}")
-        if bal < 1:
-            print("  ⚠️ No USDC yet — deposit USDC (Polygon) to start betting.")
+        print(f"  pUSD (tradeable): ${pusd:,.2f}   <- this is what you bet with")
+        print(f"  USDC.e:           ${usdce:,.2f}")
+        print(f"  USDC (native):    ${usdcn:,.2f}")
+        print(f"  POL (gas):        {pol:.4f}{'  ⚠️ low — add a little POL' if pol < 0.05 else ''}")
+        if pusd < 1 and (usdce >= 1 or usdcn >= 1):
+            src = "USDC.e" if usdce >= 1 else "native USDC"
+            print(f"  ➜ You have {src} but no pUSD. Run `wrap <amount>` to convert it to pUSD before betting.")
+        elif pusd < 1:
+            print("  ⚠️ No pUSD/USDC yet — deposit USDC (Polygon) to this address to start.")
     except Exception as e:  # noqa: BLE001
         print(f"Could not read balance: {e}\nIs web3 installed? (pip install web3)")
+
+
+def cmd_swap(amount, do_it, fee=100):
+    """Same-chain swap native Polygon USDC -> USDC.e via Uniswap V3."""
+    from eth_account import Account
+    w3 = _w3(); w = _wallet(); acct = Account.from_key(w["private_key"])
+    addr = w3.to_checksum_address(w["address"])
+    _banner()
+    have = _erc20_bal(w3, USDC_NATIVE, addr)
+    print(f"PLAN: swap {amount} native USDC -> USDC.e via Uniswap V3 (fee {fee/10000}%)")
+    if have < float(amount):
+        print(f"  Not enough native USDC (have ${have:.2f})."); return
+    if not do_it:
+        print("\n(dry run — add --yes to swap. Needs POL gas.)"); return
+    amt = int(round(float(amount) * 1e6)); min_out = int(amt * 0.99)
+    try:
+        tok = w3.eth.contract(address=w3.to_checksum_address(USDC_NATIVE), abi=ERC20_ABI)
+        router = w3.eth.contract(address=w3.to_checksum_address(ROUTER), abi=ROUTER_ABI)
+        n = w3.eth.get_transaction_count(addr)
+        fd = {"maxFeePerGas": w3.eth.gas_price * 2, "maxPriorityFeePerGas": w3.to_wei(30, "gwei")}
+        ap = tok.functions.approve(w3.to_checksum_address(ROUTER), amt).build_transaction({"from": addr, "nonce": n, "gas": 90000, **fd})
+        h1 = w3.eth.send_raw_transaction(acct.sign_transaction(ap).raw_transaction)
+        print("approve tx:", h1.hex(), "(waiting...)"); w3.eth.wait_for_transaction_receipt(h1, timeout=180)
+        params = (w3.to_checksum_address(USDC_NATIVE), w3.to_checksum_address(USDCE), int(fee), addr, amt, min_out, 0)
+        sw = router.functions.exactInputSingle(params).build_transaction({"from": addr, "nonce": n + 1, "gas": 300000, **fd})
+        h2 = w3.eth.send_raw_transaction(acct.sign_transaction(sw).raw_transaction)
+        print("swap tx:", h2.hex())
+        print("Give it ~15s, then `balance` (expect USDC.e), then `wrap`.")
+        print("If it reverted, retry: `swap %s --fee=500 --yes` (or --fee=3000)" % amount)
+    except Exception as e:
+        print("Swap failed:", e)
+
+
+def cmd_wrap(amount, do_it):
+    """Convert USDC.e (or native USDC) into pUSD via the CollateralOnramp."""
+    from eth_account import Account
+    w3 = _w3(); w = _wallet(); acct = Account.from_key(w["private_key"])
+    addr = w3.to_checksum_address(w["address"])
+    _banner()
+    usdce = _erc20_bal(w3, USDCE, addr); usdcn = _erc20_bal(w3, USDC_NATIVE, addr)
+    asset = USDCE if usdce >= float(amount) else (USDC_NATIVE if usdcn >= float(amount) else None)
+    if asset is None:
+        print(f"Not enough USDC to wrap {amount}. USDC.e ${usdce:.2f}, native ${usdcn:.2f}."); return
+    print(f"PLAN: wrap {amount} {'USDC.e' if asset==USDCE else 'native USDC'} -> pUSD via onramp")
+    if asset == USDC_NATIVE:
+        print("  NOTE: onramp is documented for USDC.e; if native wrap reverts, swap native->USDC.e first.")
+    if not do_it:
+        print("\n(dry run — add --yes to wrap. Needs POL for gas: an approve tx + a wrap tx.)"); return
+    amt = int(round(float(amount) * 1e6))
+    try:
+        tok = w3.eth.contract(address=w3.to_checksum_address(asset), abi=ERC20_ABI)
+        onramp = w3.eth.contract(address=w3.to_checksum_address(ONRAMP), abi=ONRAMP_ABI)
+        n = w3.eth.get_transaction_count(addr)
+        fee = {"maxFeePerGas": w3.eth.gas_price * 2, "maxPriorityFeePerGas": w3.to_wei(30, "gwei")}
+        ap = tok.functions.approve(w3.to_checksum_address(ONRAMP), amt).build_transaction(
+            {"from": addr, "nonce": n, "gas": 90000, **fee})
+        h1 = w3.eth.send_raw_transaction(acct.sign_transaction(ap).raw_transaction)
+        print("approve tx:", h1.hex(), "(waiting...)")
+        w3.eth.wait_for_transaction_receipt(h1, timeout=180)
+        wr = onramp.functions.wrap(w3.to_checksum_address(asset), addr, amt).build_transaction(
+            {"from": addr, "nonce": n + 1, "gas": 200000, **fee})
+        h2 = w3.eth.send_raw_transaction(acct.sign_transaction(wr).raw_transaction)
+        print("wrap tx:", h2.hex())
+        print("✅ Wrapped. Run `balance` to see your pUSD, then `setup`, then bet.")
+    except Exception as e:  # noqa: BLE001
+        print("Wrap failed:", e)
 
 
 def cmd_setup():
@@ -219,7 +304,7 @@ def cmd_redeem(condition_id, neg_risk, do_it):
         ctf = w3.eth.contract(address=w3.to_checksum_address(CTF), abi=CTF_ABI)
         cid = condition_id if condition_id.startswith("0x") else "0x" + condition_id
         parent = "0x" + "00" * 32
-        tx = ctf.functions.redeemPositions(w3.to_checksum_address(USDC), parent, cid, [1, 2]).build_transaction({
+        tx = ctf.functions.redeemPositions(w3.to_checksum_address(PUSD), parent, cid, [1, 2]).build_transaction({
             "from": addr, "nonce": w3.eth.get_transaction_count(addr), "gas": 250000,
             "maxFeePerGas": w3.eth.gas_price * 2, "maxPriorityFeePerGas": w3.to_wei(30, "gwei"),
         })
@@ -239,7 +324,7 @@ def cmd_withdraw(to, usdc_amt, do_it):
     if not do_it:
         print("\n(dry run — add --yes to send.)"); return
     try:
-        usdc = w3.eth.contract(address=w3.to_checksum_address(USDC), abi=ERC20_ABI)
+        usdc = w3.eth.contract(address=w3.to_checksum_address(PUSD), abi=ERC20_ABI)
         amt = int(round(float(usdc_amt) * 1e6))
         tx = usdc.functions.transfer(to, amt).build_transaction({
             "from": addr, "nonce": w3.eth.get_transaction_count(addr), "gas": 250000,
@@ -288,6 +373,8 @@ def main():
                 try: floor = max(0.01, round(float(ClobClient(HOST, chain_id=CHAIN).get_price(tok, "SELL")) - 0.03, 2))
                 except Exception: floor = 0.01
             _market("sell", tok, sh, floor, do_it)
+        elif cmd == "swap": cmd_swap(float(pos[0]), do_it, int(_flag(rest, "fee", int, 100)))
+        elif cmd == "wrap": cmd_wrap(float(pos[0]), do_it)
         elif cmd == "positions": cmd_positions()
         elif cmd == "redeem": cmd_redeem(pos[0], "--neg-risk" in rest, do_it)
         elif cmd == "withdraw": cmd_withdraw(pos[0], float(pos[1]), do_it)

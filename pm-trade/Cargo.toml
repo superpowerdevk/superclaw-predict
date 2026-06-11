@@ -1,0 +1,15 @@
+[package]
+name = "pm-trade"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+alloy = "2.0.5"
+anyhow = "1.0.102"
+dotenvy = "0.15.7"
+ethers = "2.0.14"
+hex = "0.4.3"
+polymarket_client_sdk_v2 = { version = "=0.6.0-canary.1", features = ["clob"] }
+rs-builder-relayer-client = { path = "../vendored-relayer" }
+serde_json = "1.0.150"
+tokio = { version = "1.52.3", features = ["full"] }
