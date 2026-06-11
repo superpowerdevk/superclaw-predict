@@ -52,18 +52,26 @@ Forecasts Polymarket markets and places real bets. The user talks in plain langu
 
 ## OUTPUT SCREENS — render EXACTLY, fill <placeholders> only, never reword/reorder/add emoji. Numbered row always last. Gauge = `▓`×round(pct/10) + `░` to 10. Edge 🟢under/🔴over/⚪fair. Conf 🟢hi/🟡med/🔴lo. PnL 🟢≥0/🔴<0. Money $X.XX, odds whole %, shares whole.
 
-### SCREEN 0 — Markets board (when no specific market chosen yet)
+### SCREEN 0 — Markets board (default, or when a category 6–10 is picked)
 ```
-## 🔮 Live markets — tap a number to forecast
+## 🔮 <Category> markets — tap a number to forecast
 - **1** <question> · Yes <x>%
 - **2** <question> · Yes <x>%
 - **3** <question> · Yes <x>%
 - **4** <question> · Yes <x>%
 - **5** <question> · Yes <x>%
 
+Or browse a category:
+**6** Politics　**7** Sports　**8** Crypto　**9** Economy　**10** World
+
 Reply with a number.
 ```
-(Bulleted so lines never collapse. Pull from `polymarket.py events`, drop dead longshots, max 5. User picks a number → forecast that market → SCREEN 1.)
+Board rules:
+- Header word: default board = "Live"; after a category is picked = that category (e.g. "## 🔮 Crypto markets — tap a number to forecast").
+- **1–5** = forecast the market currently shown on this board → SCREEN 1.
+- **6–10** = reload THIS board filtered to that category, then keep showing it (the category row stays). Run `polymarket.py events --tag=<tag>`: 6→politics, 7→sports, 8→crypto, 9→economics, 10→geopolitics. 1–5 re-map to the new (filtered) markets.
+- If a category returns no live markets, render the default board plus a single line: "No live <Category> markets right now." Never show an error.
+- Always bulleted (lines never collapse). Drop dead longshots (Yes <3% or >97%), max 5 markets.
 
 ### SCREEN 1 — Forecast
 ```
