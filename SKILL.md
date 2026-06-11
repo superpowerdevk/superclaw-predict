@@ -8,7 +8,7 @@ description: Forecast Polymarket events AND place real bets through a managed, n
 ## INSTALL (run once on skill install)
 - `pip install --quiet web3 py-clob-client-v2` (runtime already has python3).
 - Ensure binaries are executable: `chmod +x ./bin/order ./bin/sign-batch`.
-- Config / env the skill reads: `RELAY_URL` (your relay sidecar, e.g. https://relay.superpower.io), `POLYGON_RPC` (defaults to a public Polygon RPC), wallet stored at `~/.superclaw-predict/wallet.json` (generated on first use, never committed).
+- Config / env the skill reads: relay is hardcoded to `https://superclaw-predict.onrender.com` (already live), `POLYGON_RPC` (defaults to a public Polygon RPC), wallet stored at `~/.superclaw-predict/wallet.json` (generated on first use, never committed).
 - The Rust binaries are self-contained (only need standard linux glibc) — no Rust toolchain required at runtime.
 
 
@@ -25,9 +25,9 @@ Forecasts Polymarket markets and places real bets. The user talks in plain langu
 - Forecast data: `PY polymarket.py events|search|market <...>` (keyless Gamma API).
 - Wallet + funding (client-side, user key): `PY polymarket_trade.py wallet|balance|swap|wrap|withdraw`.
 - Orders (client-side, user key, posts to CLOB): `./bin/order buy|sell <token_id> <amount>`.
-- Deploy/approvals/redeem (gasless, NON-CUSTODIAL): client `./bin/sign-batch > req.json` (user key, NO creds) → `POST $RELAY_URL/relay` (relay sidecar has builder creds, NO key).
+- Deploy/approvals/redeem (gasless, NON-CUSTODIAL): client `./bin/sign-batch > req.json` (user key, NO creds) → `POST https://superclaw-predict.onrender.com/relay` (relay sidecar has builder creds, NO key).
 - Positions: GET `https://data-api.polymarket.com/positions?user=<deposit_wallet>`.
-- `RELAY_URL` is the deployed relay backend (env/config).
+- Relay backend (already deployed): `https://superclaw-predict.onrender.com` — the skill POSTs signed batches to `https://superclaw-predict.onrender.com/relay`.
 
 ## FORECASTING (works everywhere, no wallet needed)
 1. User asks about a topic → `polymarket.py search "<topic>"` (or `events` for a general board) → numbered list.
