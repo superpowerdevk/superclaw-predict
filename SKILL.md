@@ -1,6 +1,6 @@
 ---
 name: superclaw-predict
-description: Forecast Polymarket prediction-market events. Fetches live, keyless market-implied odds (sports, politics, crypto, business, tech, geopolitics), then researches the event, forms its OWN probability, and flags the EDGE versus the market. Use when the user asks "what are the odds of X", "predict <event>", "is the market right about Y", "should I bet on Z", or wants to browse prediction markets. Forecasts AND can place real bets on Polymarket (with dry-run confirmation + safety gates).
+description: Forecast Polymarket prediction-market events. Fetches live, keyless market-implied odds (sports, politics, crypto, business, tech, geopolitics), then researches the event, forms its OWN probability, and flags the EDGE versus the market. Use when the user asks "what are the odds of X", "predict <event>", "is the market right about Y", "should I bet on Z", or wants to browse prediction markets. Forecasts AND places real bets on Polymarket through a managed wallet — the user just deposits USDC; SuperClaw handles the wallet, allowance, signing, positions, redeem, and withdraw. Dry-run + confirmation gates on every order.
 ---
 
 # SuperClaw Predict — Polymarket Event Forecasting
@@ -53,36 +53,35 @@ Turn Polymarket's live odds into a real read: the market's number, the agent's o
 - Markets older than their `resolves` date or with tiny volume are unreliable — flag thin/low-liquidity markets.
 - Not financial or betting advice. The user bears all risk.
 
-## Placing a bet (REAL MONEY — Polymarket CLOB)
+## Placing a bet (REAL MONEY — managed wallet)
 
-Bets execute on Polymarket's on-chain order book via `polymarket_trade.py` (uses `py-clob-client-v2`). This is real money on Polygon. Hard safety flow — never skip:
+SuperClaw trades through a **dedicated Polygon wallet it generates and manages for the user** (`polymarket_trade.py`, via `py-clob-client-v2`). The user never handles keys, never signs up on Polymarket, never sets env vars — they only **deposit USDC**. Non-custodial: the key lives locally in a git-ignored file; the user can `export` it or `withdraw` anytime.
 
-### One-time setup (first bet only)
-1. **Install the client:** `pip install py-clob-client-v2`
-2. **Set credentials as environment variables** (NEVER commit or paste a private key in chat — if the user pastes one, tell them to stop and set it as an env var instead):
-   - `POLYMARKET_PK` — wallet private key
-   - `POLYMARKET_FUNDER` — wallet address holding the USDC (optional; defaults to signer)
-   - `POLYMARKET_CHAIN` — `80002` for **Amoy testnet** (recommended first), `137` for **mainnet** (real money)
-3. **Fund the wallet:** USDC on Polygon + a little MATIC for gas.
-4. **Approve allowance (one-time):** `python3 polymarket_trade.py setup`
-5. **Sanity check:** `python3 polymarket_trade.py balance`
+One-time dependency: `pip install py-clob-client-v2 web3`.
 
-### Placing the bet
-1. Get the **token ID** for the side from `polymarket.py market <slug>` (Yes = first token, No = second).
-2. Ask the user the **amount in USDC** and confirm the **side** (YES/NO).
-3. **DRY RUN first** — run WITHOUT `--yes`:
-   `python3 polymarket_trade.py buy <token_id> <usdc_amount>`
-   This prints the plan (side, amount, current price, slippage cap, chain). Show it to the user.
-4. **Get explicit confirmation** of side + amount + chain. Only then execute:
-   `python3 polymarket_trade.py buy <token_id> <usdc_amount> --yes`
-5. Report the fill. To exit a position later: `python3 polymarket_trade.py sell <token_id> <shares> --yes`.
+### Wallet setup (first time — just deposit)
+1. **Show the wallet:** `python3 polymarket_trade.py wallet` → prints the user's **deposit address**.
+2. Tell the user to send, **on the Polygon network**, to that address: **USDC** (their betting balance) + **a little POL/MATIC** (one-time gas, ~$1). No Polymarket account needed.
+3. **Confirm funds:** `python3 polymarket_trade.py balance` (shows USDC + POL).
+4. **Approve allowance (one-time):** `python3 polymarket_trade.py setup`.
+
+### Placing the bet (natural language — never show token IDs to the user)
+1. The user expresses it plainly: *"bet $10 on YES"* / *"put $5 on No."* You map the side to its token ID **internally** from `python3 polymarket.py market <slug>` (Yes = first token, No = second). **Do NOT show raw token IDs to the user.**
+2. **DRY RUN first** (no `--yes`): `python3 polymarket_trade.py buy <token_id> <usdc_amount>` — shows side, amount, price, slippage cap. Summarize it in plain language ("$10 on YES at ~$0.18 → ~55 shares; pays ~$55 if it resolves YES").
+3. **Get explicit confirmation** of side + amount, then execute: `python3 polymarket_trade.py buy <token_id> <usdc_amount> --yes`. Report the fill in plain language.
+
+### Managing (all natural language)
+- **Positions:** "show my positions" → `python3 polymarket_trade.py positions`.
+- **Sell / exit early:** `python3 polymarket_trade.py sell <token_id> <shares> --yes`.
+- **Redeem winnings** (after a market resolves): "claim my winnings" → from `positions`, take the `conditionId` of a ✅ REDEEMABLE row → dry-run `python3 polymarket_trade.py redeem <condition_id>` → confirm → `--yes`.
+- **Withdraw:** "withdraw $X to <address>" → `python3 polymarket_trade.py withdraw <address> <usdc> --yes`.
+- **Take the wallet to polymarket.com:** "export my wallet" → `python3 polymarket_trade.py export` (reveals the key once, with a warning) so the user can import it into MetaMask and see full history on polymarket.com.
 
 ### Non-negotiable safety rules
-- **Testnet/tiny first.** The user's FIRST bet must be on **Amoy testnet** (`POLYMARKET_CHAIN=80002`) OR a **$1 mainnet bet on a throwaway wallet** to validate the full flow. Never let a first-ever action be a large mainnet bet.
-- **Always dry-run, then confirm, then `--yes`.** Never pass `--yes` without the user explicitly approving that exact side + amount + chain.
-- **Never echo, log, store, or commit the private key.** It lives only in the env var. Config files with keys must be git-ignored.
-- State the **chain** (mainnet = real money, testnet = practice) in every confirmation.
-- This is speculative real-money betting: the user can lose the entire stake, markets can be illiquid or resolve unexpectedly, and SL/TP-style exits are not automatic. Not financial or betting advice — the user bears all risk.
+- **Tiny first.** The user's FIRST bet must be **~$1** to validate the full flow before any larger size.
+- **Always dry-run → confirm → `--yes`.** Never pass `--yes` without the user explicitly approving that exact side + amount.
+- **🔒 The private key is managed locally and is NEVER shown except on an explicit `export`.** Never echo, log, or commit it. If a user pastes ANY private key into chat, tell them not to and that it is exposed. (The user does not need to handle keys at all in the normal flow.)
+- This is speculative real-money betting: the user can lose the entire stake, markets can be illiquid or resolve unexpectedly. Not financial or betting advice — the user bears all risk.
 
 ## Notes
 
