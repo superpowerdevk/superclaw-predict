@@ -1,0 +1,30 @@
+name: build-linux-binaries
+on:
+  push:
+    paths:
+      - 'pm-trade/**'
+      - 'vendored-relayer/**'
+      - '.github/workflows/build-linux-binaries.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust toolchain
+        run: rustup default stable && rustup update stable && rustc --version
+      - name: Build linux x86_64 binaries
+        working-directory: pm-trade
+        run: cargo build --release --bin order --bin sign-batch
+      - name: Commit binaries
+        run: |
+          mkdir -p bin
+          cp pm-trade/target/release/order bin/order
+          cp pm-trade/target/release/sign-batch bin/sign-batch
+          git config user.name "superclaw-ci"
+          git config user.email "ci@superclaw"
+          git add -f bin/order bin/sign-batch
+          git commit -m "ci: linux x86_64 binaries [skip ci]" || echo "no change"
+          git push
