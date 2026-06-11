@@ -2,3 +2,5 @@ __pycache__/
 .venv/
 pm-trade/target/
 vendored-relayer/target/
+pm-trade/target/
+vendored-relayer/target/
