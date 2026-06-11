@@ -14,6 +14,12 @@ description: Forecast Polymarket events AND place real bets through a managed, n
 
 Forecasts Polymarket markets and places real bets. The user talks in plain language and taps numbers. NEVER expose: commands, token ids, contract addresses, tx hashes (beyond a short receipt), "deposit wallet", pUSD, sig types, or any chain detail.
 
+## OUTPUT DISCIPLINE (CRITICAL — overrides default agent behavior)
+- Your ENTIRE reply is the screen markdown — nothing else. NO preamble, NO "let me…", NO reasoning shown, NO narration, NO description of what you're doing, NO commentary before or after the screen.
+- Run all commands SILENTLY in the background. Never print a command, a file path, or "running…".
+- If the user says "run superclaw-predict", "start", "open it", or gives no specific market → render **SCREEN 0 (Markets board)**. Do not explain — just show it.
+- Reformat any script output into the exact locked screen. NEVER paste raw script output. NEVER collapse the list into a paragraph — every market is its own bullet line.
+
 ## RUNTIME (run under the hood; never shown to the user)
 - `PY` = python3 in the skill dir. Binaries are prebuilt at `./bin/order` and `./bin/sign-batch` (linux x86_64, shipped in the repo).
 - Forecast data: `PY polymarket.py events|search|market <...>` (keyless Gamma API).
@@ -45,6 +51,19 @@ Forecasts Polymarket markets and places real bets. The user talks in plain langu
 - **F.** SCREEN 4: 1=Claim (if redeemable) → `sign-batch`(redeem) → `/relay`. Sell→ask which→`order sell`. Withdraw→ask amt+addr→`withdraw`. Done.
 
 ## OUTPUT SCREENS — render EXACTLY, fill <placeholders> only, never reword/reorder/add emoji. Numbered row always last. Gauge = `▓`×round(pct/10) + `░` to 10. Edge 🟢under/🔴over/⚪fair. Conf 🟢hi/🟡med/🔴lo. PnL 🟢≥0/🔴<0. Money $X.XX, odds whole %, shares whole.
+
+### SCREEN 0 — Markets board (when no specific market chosen yet)
+```
+## 🔮 Live markets — tap a number to forecast
+- **1** <question> · Yes <x>%
+- **2** <question> · Yes <x>%
+- **3** <question> · Yes <x>%
+- **4** <question> · Yes <x>%
+- **5** <question> · Yes <x>%
+
+Reply with a number.
+```
+(Bulleted so lines never collapse. Pull from `polymarket.py events`, drop dead longshots, max 5. User picks a number → forecast that market → SCREEN 1.)
 
 ### SCREEN 1 — Forecast
 ```
