@@ -171,6 +171,12 @@ def cmd_market(slug: str) -> None:
             out.append(f"- {o} **{round(float(p)*100)}%**")
         except Exception:
             continue
+    # Trading token IDs (needed to place a bet): clobTokenIds aligns with outcomes
+    toks = _parse_list(m.get("clobTokenIds"))
+    if toks:
+        out += ["", "**Token IDs (for trading)**"]
+        for o, tk in zip(outs, toks):
+            out.append(f"- {o}: `{tk}`")
     desc = (m.get("description") or "").strip()
     if desc:
         out += ["", "**Resolution criteria**", desc[:600]]
