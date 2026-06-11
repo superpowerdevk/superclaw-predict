@@ -5,14 +5,21 @@ description: Forecast Polymarket events AND place real bets through a managed, n
 
 # SuperClaw Predict
 
+## INSTALL (run once on skill install)
+- `pip install --quiet web3 py-clob-client-v2` (runtime already has python3).
+- Ensure binaries are executable: `chmod +x ./bin/order ./bin/sign-batch`.
+- Config / env the skill reads: `RELAY_URL` (your relay sidecar, e.g. https://relay.superpower.io), `POLYGON_RPC` (defaults to a public Polygon RPC), wallet stored at `~/.superclaw-predict/wallet.json` (generated on first use, never committed).
+- The Rust binaries are self-contained (only need standard linux glibc) — no Rust toolchain required at runtime.
+
+
 Forecasts Polymarket markets and places real bets. The user talks in plain language and taps numbers. NEVER expose: commands, token ids, contract addresses, tx hashes (beyond a short receipt), "deposit wallet", pUSD, sig types, or any chain detail.
 
 ## RUNTIME (run under the hood; never shown to the user)
-- `PY` = `.venv/bin/python` in the skill dir. `RS` = `pm-trade` (cargo run --bin / release binaries).
+- `PY` = python3 in the skill dir. Binaries are prebuilt at `./bin/order` and `./bin/sign-batch` (linux x86_64, shipped in the repo).
 - Forecast data: `PY polymarket.py events|search|market <...>` (keyless Gamma API).
 - Wallet + funding (client-side, user key): `PY polymarket_trade.py wallet|balance|swap|wrap|withdraw`.
-- Orders (client-side, user key, posts to CLOB): `RS order -- buy|sell <token_id> <amount>`.
-- Deploy/approvals/redeem (gasless, NON-CUSTODIAL): client `RS sign-batch > req.json` (user key, NO creds) → `POST <RELAY_URL>/relay` (server has builder creds, NO key).
+- Orders (client-side, user key, posts to CLOB): `./bin/order buy|sell <token_id> <amount>`.
+- Deploy/approvals/redeem (gasless, NON-CUSTODIAL): client `./bin/sign-batch > req.json` (user key, NO creds) → `POST $RELAY_URL/relay` (relay sidecar has builder creds, NO key).
 - Positions: GET `https://data-api.polymarket.com/positions?user=<deposit_wallet>`.
 - `RELAY_URL` is the deployed relay backend (env/config).
 
