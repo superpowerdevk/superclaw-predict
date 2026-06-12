@@ -44,6 +44,13 @@ fn wrap_usdce_to_pusd(amount: U256, to: Address) -> DepositWalletCall {
     DepositWalletCall::new(ONRAMP, format!("0x{}", hex::encode(data)))
 }
 
+fn erc20_transfer(token: &str, to: Address, amount: U256) -> DepositWalletCall {
+    let sel = ethers::utils::id("transfer(address,uint256)");
+    let mut data = sel.to_vec();
+    data.extend_from_slice(&encode(&[Token::Address(to), Token::Uint(amount)]));
+    DepositWalletCall::new(token, format!("0x{}", hex::encode(data)))
+}
+
 fn approvals() -> Vec<DepositWalletCall> {
     vec![
         operations::approve_pusd_for_ctf_exchange_v2().into(),
@@ -92,6 +99,18 @@ async fn main() -> anyhow::Result<()> {
         let amount = U256::from_dec_str(micro).expect("bad amount");
         calls.push(operations::approve(USDCE, ONRAMP, amount).into());
         calls.push(wrap_usdce_to_pusd(amount, deposit));
+    }
+
+    if mode == "sweep" {
+        let dest: Address = args.get(2).expect("usage: sign-batch sweep <dest> <pusd> <usdce> <usdc>").parse()?;
+        let g = |i: usize| U256::from_dec_str(args.get(i).map(|s| s.as_str()).unwrap_or("0")).unwrap_or(U256::zero());
+        let (pusd_amt, usdce_amt, usdc_amt) = (g(3), g(4), g(5));
+        if pusd_amt  > U256::zero() { calls.push(erc20_transfer(PUSD, dest, pusd_amt)); }
+        if usdce_amt > U256::zero() { calls.push(erc20_transfer(USDCE, dest, usdce_amt)); }
+        if usdc_amt  > U256::zero() { calls.push(erc20_transfer(NATIVE_USDC, dest, usdc_amt)); }
+        let req = build_batch_request(&wallet, 137, owner, deposit, nonce, deadline, calls, Some("Sweep".to_string()))?;
+        println!("{}", serde_json::to_string(&req)?);
+        return Ok(());
     }
 
     calls.extend(approvals());
