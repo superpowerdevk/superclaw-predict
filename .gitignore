@@ -7,3 +7,13 @@ vendored-relayer/target/
 pm-trade/target/
 vendored-relayer/target/
 .agents/
+
+bin/
+pm-trade/
+vendored-relayer/
+config/
+.agents/
+.github/
+relay_app.py
+relay_server.py
+polymarket_trade.py
