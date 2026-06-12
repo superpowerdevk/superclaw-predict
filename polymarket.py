@@ -171,17 +171,24 @@ def cmd_market(slug: str) -> None:
             out.append(f"- {o} **{round(float(p)*100)}%**")
         except Exception:
             continue
-    # Trading token IDs (needed to place a bet): clobTokenIds aligns with outcomes
-    toks = _parse_list(m.get("clobTokenIds"))
-    if toks:
-        out += ["", "**Token IDs (for trading)**"]
-        for o, tk in zip(outs, toks):
-            out.append(f"- {o}: `{tk}`")
     desc = (m.get("description") or "").strip()
     if desc:
         out += ["", "**Resolution criteria**", desc[:600]]
-    out.append("\n[AGENT: these are the MARKET's odds. Research the event, form YOUR own probability, "
-               "then present the forecast card (Market % / My read % / Edge / Confidence). One signal, not advice.]")
+    # Polymarket event URL for the handoff (prefer the event slug, fall back to market slug)
+    ev = m.get("events") or []
+    event_slug = (ev[0].get("slug") if ev and isinstance(ev[0], dict) else None) or m.get("slug") or slug
+    url = f"https://polymarket.com/event/{event_slug}"
+    out.append(
+        "\n[AGENT: Output ONLY the forecast card markdown — no narration, no preamble, no 'let me'. "
+        "These are the MARKET's odds. Research the event, form YOUR OWN probability, then render SCREEN 1 "
+        "EXACTLY per SKILL.md, in this order: title; traded/resolves line; bullets Market %, My read %, "
+        "Edge, Confidence; then 'Why I am higher/lower:' with 3 bullets; then the play line "
+        "'**📈 The play: Bet YES|Bet NO|Skip** — for the reasons above, ...' (use the real evidence-vs-price wording); "
+        "then EXACTLY this Polymarket link block (verbatim, with this URL):\n"
+        "> 🎯 **Place your bets on Polymarket** — url below 👇\n"
+        f"> 🔗 {url}\n"
+        "One signal, not advice; SuperClaw never trades.]"
+    )
     print("\n".join(out))
 
 
