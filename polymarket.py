@@ -183,7 +183,7 @@ def cmd_market(slug: str) -> None:
         "These are the MARKET's odds. Research the event, form YOUR OWN probability, then render SCREEN 1 "
         "EXACTLY per SKILL.md, in this order: title; traded/resolves line; bullets Market %, My read %, "
         "Edge, Confidence; then 'Why I am higher/lower:' with 3 bullets; then the play line "
-        "'**📈 The play: Bet YES|Bet NO|Skip** — for the reasons above, ...' (use the real evidence-vs-price wording); "
+        "the play line — ALWAYS a side, NEVER 'Skip': '**📈 The play: Bet YES|Bet NO|Lean YES|Lean NO** — for the reasons above, ...' pointing to the mispriced VALUE side (not the favorite); thin edge => 'Lean'; "
         "then EXACTLY this Polymarket link block (verbatim, with this URL):\n"
         "> 🎯 **Place your bets on Polymarket** — url below 👇\n"
         f"> 🔗 {url}\n"
