@@ -48,12 +48,19 @@ Why I'm <higher|lower>:
 - <reason 2>
 - <reason 3>
 
+**📈 The play: <Bet YES | Bet NO | Skip>** — <play reason, see below>
+
 > 🎯 **Place your bets on Polymarket** — url below 👇
 > 🔗 https://polymarket.com/event/<slug>
 ```
 Rules:
 - Gauge `<bar>` = `▓`×round(pct/10) + `░` to total 10. Money $X.XX, odds whole %.
 - Edge: 🟢 underpriced / 🔴 overpriced / ⚪ fair. Confidence: 🟢 high / 🟡 medium / 🔴 low.
+- **The play line** ties the bet to the reasons just listed — plain English, evidence-vs-price, no "betting against the crowd" framing:
+  - **My read higher than market** → `**📈 The play: Bet YES** — for the reasons above, this is more likely than the price implies, so YES is the better-value bet.`
+  - **My read lower than market** → `**📈 The play: Bet NO** — for the reasons above, this is less likely than the price implies, so NO is the better-value bet.`
+  - **Gap small (≤3 pts) or confidence low** → `**📈 The play: Skip** — the price is about right for the reasons above; no clear edge here.`
+  - Never force a side when the edge is thin — calling the skip is part of an honest forecast.
 - The URL is ALWAYS the real event slug for THIS market, taken from `polymarket.py market <slug>` — never a placeholder, never a hardcoded example. Build it as `https://polymarket.com/event/<slug>`.
 - The card ENDS at the link. There is no "Bet Yes / No", no amount step, no confirmation — SuperClaw never trades. Betting happens on Polymarket via that link.
 
