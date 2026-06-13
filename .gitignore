@@ -17,3 +17,4 @@ config/
 relay_app.py
 relay_server.py
 polymarket_trade.py
+.agents/
